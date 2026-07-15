@@ -29,7 +29,7 @@ installation available to CMake:
 
 ```powershell
 npm ci
-$env:CMAKE_PREFIX_PATH = 'C:\vcpkg\installed\x64-windows-static-md'
+$env:CMAKE_PREFIX_PATH = 'C:\vcpkg\installed\x64-windows-static'
 $env:OPENSSL_ROOT_DIR = $env:CMAKE_PREFIX_PATH
 npm run build:native
 npm run smoke:native

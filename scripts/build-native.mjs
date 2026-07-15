@@ -17,7 +17,7 @@ const LADYBUG_TAG = `v${LADYBUG_VERSION}`
 const LADYBUG_COMMIT = '1354081eb5528b3ca12e38dd4402cdd47215e57a'
 const NODE_API_COMMIT = '1356ebbad75bf69c152dfe1188fad285b5f85b6e'
 const EXTENSIONS_COMMIT = '7d7f90fdbb562965407e7c29a8ae5312d09b5812'
-const PATCH_VERSION = 5
+const PATCH_VERSION = 6
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const workRoot = path.resolve(
@@ -176,6 +176,9 @@ function configureAndBuild() {
     '-DAUTO_UPDATE_GRAMMAR=FALSE',
     '-DEXTENSION_STATIC_LINK_LIST=fts'
   ]
+  if (process.platform === 'win32') {
+    cmakeArgs.push('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+  }
   appendCmakePath(cmakeArgs, 'CMAKE_PREFIX_PATH')
   appendCmakePath(cmakeArgs, 'OPENSSL_ROOT_DIR')
   appendCmakePath(cmakeArgs, 'CMAKE_TOOLCHAIN_FILE')

@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: dist
-          key: ladybug-bundle-win32-x64-electron-41.0.2-v0.18.1-p5-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
+          key: ladybug-bundle-win32-x64-electron-41.0.2-v0.18.1-p6-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
 
       - name: Inspect verified release bundle
         id: cached-bundle
@@ -72,7 +72,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/ladybug-work
-          key: ladybug-cmake-win32-x64-electron-41.0.2-v0.18.1-p5-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
+          key: ladybug-cmake-win32-x64-electron-41.0.2-v0.18.1-p6-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
 
       - name: Materialize cached native build
         id: cached-native
@@ -94,9 +94,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: |
-            C:\vcpkg\installed\x64-windows-static-md
-            C:\vcpkg\packages\openssl_x64-windows-static-md
-          key: ${{ runner.os }}-vcpkg-openssl-x64-windows-static-md-v1
+            C:\vcpkg\installed\x64-windows-static
+            C:\vcpkg\packages\openssl_x64-windows-static
+          key: ${{ runner.os }}-vcpkg-openssl-x64-windows-static-v1
 
       - name: Prepare native toolchain
         if: ${{ startsWith(github.ref, 'refs/tags/') || (steps.cached-bundle.outputs.available != 'true' && steps.cached-native.outputs.available != 'true') }}
@@ -111,12 +111,12 @@ jobs:
           if (!$vcpkgRoot) {
             $vcpkgRoot = 'C:\vcpkg'
           }
-          & (Join-Path $vcpkgRoot 'vcpkg.exe') install 'openssl:x64-windows-static-md'
+          & (Join-Path $vcpkgRoot 'vcpkg.exe') install 'openssl:x64-windows-static'
           if ($LASTEXITCODE -ne 0) {
             throw "vcpkg failed with exit code $LASTEXITCODE"
           }
 
-          $opensslRoot = Join-Path $vcpkgRoot 'installed\x64-windows-static-md'
+          $opensslRoot = Join-Path $vcpkgRoot 'installed\x64-windows-static'
           if (!(Test-Path (Join-Path $opensslRoot 'include\openssl\opensslv.h'))) {
             throw "OpenSSL headers are unavailable: $opensslRoot"
           }
@@ -179,13 +179,16 @@ jobs:
           if ($dependencies -notmatch '(?is)delay load dependencies:.*node\.exe') {
             throw 'node.exe must be delay-loaded for Electron compatibility'
           }
+          if ($dependencies -match '(?i)(MSVCP|VCRUNTIME)[^\s]*\.dll') {
+            throw 'LadybugDB must statically link the Microsoft C/C++ runtime'
+          }
           & $dumpbin.FullName /IMPORTS dist\win32-x64\lbugjs.node |
             Select-String -Pattern 'electron|node\.exe|node\.dll|delayimp' -CaseSensitive:$false
 
       - name: Create release bundle
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p5-electron-$env:ELECTRON_VERSION.zip"
+          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p6-electron-$env:ELECTRON_VERSION.zip"
           Compress-Archive -Path dist\* -DestinationPath $archive -CompressionLevel Optimal
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           $checksum = "$hash  $(Split-Path $archive -Leaf)`n"
@@ -198,7 +201,7 @@ jobs:
       - name: Upload Windows bundle
         uses: actions/upload-artifact@v7
         with:
-          name: chronnote-ladybug-win32-x64-v0.18.1-p5-electron-${{ env.ELECTRON_VERSION }}
+          name: chronnote-ladybug-win32-x64-v0.18.1-p6-electron-${{ env.ELECTRON_VERSION }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 7
