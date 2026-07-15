@@ -188,7 +188,12 @@ jobs:
           $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p5-electron-$env:ELECTRON_VERSION.zip"
           Compress-Archive -Path dist\* -DestinationPath $archive -CompressionLevel Optimal
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $(Split-Path $archive -Leaf)" | Set-Content artifacts/SHA256SUMS -Encoding ascii
+          $checksum = "$hash  $(Split-Path $archive -Leaf)`n"
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD 'artifacts\SHA256SUMS'),
+            $checksum,
+            [Text.UTF8Encoding]::new($false)
+          )
 
       - name: Upload Windows bundle
         uses: actions/upload-artifact@v7
@@ -208,9 +213,14 @@ jobs:
             throw "Electron executable is unavailable: $electron"
           }
           $env:ELECTRON_RUN_AS_NODE = '1'
-          & $electron scripts/smoke-native.cjs electron-persistence
-          if ($LASTEXITCODE -ne 0) {
-            throw "Electron smoke test failed with exit code $LASTEXITCODE"
+          $electronProcess = Start-Process `
+            -FilePath $electron `
+            -ArgumentList 'scripts/smoke-native.cjs', 'electron-persistence' `
+            -NoNewWindow `
+            -PassThru `
+            -Wait
+          if ($electronProcess.ExitCode -ne 0) {
+            throw "Electron smoke test failed with exit code $($electronProcess.ExitCode)"
           }
 
       - name: Publish tagged release

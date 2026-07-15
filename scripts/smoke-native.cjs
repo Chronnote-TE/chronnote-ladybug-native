@@ -27,26 +27,37 @@ if (phase === 'electron-persistence') {
 function runElectronPersistenceSmoke() {
   const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'chronnote-ladybug-electron-smoke-'))
   const targetDatabase = path.join(temporaryRoot, 'graph')
+  traceElectron('require-runtime')
   const { Connection, Database } = require(runtimeRoot)
+  traceElectron('runtime-loaded')
   try {
-    withConnection(Database, Connection, targetDatabase, seed)
-    withConnection(Database, Connection, targetDatabase, verifyFirstRecovery)
-    withConnection(Database, Connection, targetDatabase, verifyFinalRecovery)
+    withConnection(Database, Connection, targetDatabase, 'seed', seed)
+    withConnection(Database, Connection, targetDatabase, 'verify-first-recovery', verifyFirstRecovery)
+    withConnection(Database, Connection, targetDatabase, 'verify-final-recovery', verifyFinalRecovery)
     process.stdout.write('[ladybug-native] Electron Jieba FTS persistence smoke test passed\n')
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true })
   }
 }
 
-function withConnection(Database, Connection, targetDatabase, operation) {
+function withConnection(Database, Connection, targetDatabase, phaseName, operation) {
+  traceElectron(`${phaseName}:open-database`)
   const database = new Database(targetDatabase)
+  traceElectron(`${phaseName}:open-connection`)
   const connection = new Connection(database)
   try {
+    traceElectron(`${phaseName}:execute`)
     operation(connection)
+    traceElectron(`${phaseName}:executed`)
   } finally {
     connection.closeSync()
     database.closeSync()
+    traceElectron(`${phaseName}:closed`)
   }
+}
+
+function traceElectron(message) {
+  writeSync(1, `[ladybug-native] electron:${message}\n`)
 }
 
 function runOrchestrator() {
