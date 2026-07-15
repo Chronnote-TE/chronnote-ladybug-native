@@ -40,26 +40,17 @@ jobs:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
         run: npm ci
 
-      - name: Restore incremental CMake build
-        id: ladybug-cache
+      - name: Restore verified release bundle
+        id: bundle-cache
         uses: actions/cache/restore@v6
         with:
-          path: |
-            .cache/ladybug-work
-            dist
-          key: ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
-          restore-keys: |
-            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}-
-            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-d7382c333df035b137b14c9bd0f6b309a820ba1448710b801fea7982b673f685-
+          path: dist
+          key: ladybug-bundle-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
 
-      - name: Inspect cached release bundle
+      - name: Inspect verified release bundle
         id: cached-bundle
         run: |
           $available = 'false'
-          $cachedNative = '.cache/ladybug-work/ladybug/tools/nodejs_api/build/lbugjs.node'
-          if (!(Test-Path 'dist/manifest.json') -and (Test-Path $cachedNative)) {
-            node scripts/build-native.mjs --stage-existing
-          }
           if (Test-Path 'dist/manifest.json') {
             try {
               npm run verify
@@ -75,8 +66,33 @@ jobs:
           }
           "available=$available" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Restore OpenSSL cache
+      - name: Restore incremental CMake build
+        id: cmake-cache
         if: ${{ startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/ladybug-work
+          key: ladybug-cmake-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
+          restore-keys: |
+            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-d7382c333df035b137b14c9bd0f6b309a820ba1448710b801fea7982b673f685-
+
+      - name: Materialize cached native build
+        id: cached-native
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.cached-bundle.outputs.available != 'true' }}
+        run: |
+          $available = 'false'
+          $cachedNative = '.cache/ladybug-work/ladybug/tools/nodejs_api/build/lbugjs.node'
+          if (Test-Path $cachedNative) {
+            node scripts/build-native.mjs --stage-existing
+            npm run verify
+            if ($LASTEXITCODE -eq 0) {
+              $available = 'true'
+            }
+          }
+          "available=$available" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Restore OpenSSL cache
+        if: ${{ startsWith(github.ref, 'refs/tags/') || (steps.cached-bundle.outputs.available != 'true' && steps.cached-native.outputs.available != 'true') }}
         uses: actions/cache@v6
         with:
           path: |
@@ -85,7 +101,7 @@ jobs:
           key: ${{ runner.os }}-vcpkg-openssl-x64-windows-static-md-v1
 
       - name: Prepare native toolchain
-        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true' }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') || (steps.cached-bundle.outputs.available != 'true' && steps.cached-native.outputs.available != 'true') }}
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsInstallation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -115,7 +131,7 @@ jobs:
 
       - name: Build LadybugDB with Jieba FTS
         id: native-build
-        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true' }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') || (steps.cached-bundle.outputs.available != 'true' && steps.cached-native.outputs.available != 'true') }}
         continue-on-error: true
         shell: cmd
         run: |
@@ -123,20 +139,25 @@ jobs:
           npm run build:native
 
       - name: Require successful native build
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true') && steps.native-build.outcome != 'success' }}
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (steps.cached-bundle.outputs.available != 'true' && steps.cached-native.outputs.available != 'true')) && steps.native-build.outcome != 'success' }}
         run: throw 'LadybugDB native build failed; the incremental build cache was preserved.'
 
       - name: Verify bundle metadata
         run: npm run verify
 
-      - name: Save verified native build
-        if: ${{ steps.ladybug-cache.outputs.cache-hit != 'true' }}
+      - name: Save verified release bundle
+        if: ${{ steps.bundle-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
-          path: |
-            .cache/ladybug-work
-            dist
-          key: ${{ steps.ladybug-cache.outputs.cache-primary-key }}
+          path: dist
+          key: ${{ steps.bundle-cache.outputs.cache-primary-key }}
+
+      - name: Save incremental CMake build
+        if: ${{ steps.native-build.outcome == 'success' && steps.cmake-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/ladybug-work
+          key: ${{ steps.cmake-cache.outputs.cache-primary-key }}
 
       - name: Smoke test in Node.js
         run: npm run smoke:native
