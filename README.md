@@ -39,4 +39,3 @@ objects for fast incremental retries.
 
 The build orchestration in this repository is MIT licensed. Produced bundles contain code from
 LadybugDB, cppjieba, OpenSSL, and their transitive dependencies under their respective licenses.
-

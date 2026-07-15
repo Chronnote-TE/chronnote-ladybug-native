@@ -83,4 +83,3 @@ function search(value) {
 function quote(value) {
   return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
 }
-

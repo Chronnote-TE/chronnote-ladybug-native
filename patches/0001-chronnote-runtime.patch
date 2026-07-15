@@ -4,7 +4,8 @@ diff --git a/extension/CMakeLists.txt b/extension/CMakeLists.txt
 @@ -62,6 +62,12 @@ else ()
      add_compile_definitions(BUILD_DYNAMIC_LOAD)
  endif ()
- 
+-
++
 +# Extension object libraries are configured before the static lbug target exists, so its
 +# INTERFACE definition cannot propagate to them on Windows.
 +if (WIN32 AND BUILD_STATIC_EXTENSION)
@@ -55,4 +56,3 @@ diff --git a/src/storage/wal/records/node_update_record_replay.cpp b/src/storage
 +    table.initUpdateState(&clientContext, *updateState);
      table.update(transaction::Transaction::Get(clientContext), *updateState);
  }
-

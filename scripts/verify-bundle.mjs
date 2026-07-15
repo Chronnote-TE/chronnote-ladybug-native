@@ -28,4 +28,3 @@ function verifyFile(description, requirePeMagic) {
     throw new Error(`${description.path} is not a Windows PE file`)
   }
 }
-

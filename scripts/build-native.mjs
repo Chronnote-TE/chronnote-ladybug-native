@@ -265,4 +265,3 @@ function run(command, args, options = {}) {
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`${command} failed with exit code ${result.status}`)
 }
-
