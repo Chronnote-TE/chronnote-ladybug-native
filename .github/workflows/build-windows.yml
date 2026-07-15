@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: dist
-          key: ladybug-bundle-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
+          key: ladybug-bundle-win32-x64-electron-41.0.2-v0.18.1-p5-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
 
       - name: Inspect verified release bundle
         id: cached-bundle
@@ -72,9 +72,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/ladybug-work
-          key: ladybug-cmake-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
-          restore-keys: |
-            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-d7382c333df035b137b14c9bd0f6b309a820ba1448710b801fea7982b673f685-
+          key: ladybug-cmake-win32-x64-electron-41.0.2-v0.18.1-p5-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
 
       - name: Materialize cached native build
         id: cached-native
@@ -169,14 +167,25 @@ jobs:
           if (!$dumpbin) {
             throw 'dumpbin.exe is unavailable'
           }
-          & $dumpbin.FullName /DEPENDENTS dist\win32-x64\lbugjs.node
+          $dependencies = (& $dumpbin.FullName /DEPENDENTS dist\win32-x64\lbugjs.node) -join "`n"
+          $dependencies
+          $normalDependencies = [regex]::Match(
+            $dependencies,
+            '(?s)Image has the following dependencies:(.*?)Image has the following delay load dependencies:'
+          )
+          if (!$normalDependencies.Success -or $normalDependencies.Groups[1].Value -match '(?i)node\.exe') {
+            throw 'node.exe must not be a normal LadybugDB dependency'
+          }
+          if ($dependencies -notmatch '(?is)delay load dependencies:.*node\.exe') {
+            throw 'node.exe must be delay-loaded for Electron compatibility'
+          }
           & $dumpbin.FullName /IMPORTS dist\win32-x64\lbugjs.node |
             Select-String -Pattern 'electron|node\.exe|node\.dll|delayimp' -CaseSensitive:$false
 
       - name: Create release bundle
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p4-electron-$env:ELECTRON_VERSION.zip"
+          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p5-electron-$env:ELECTRON_VERSION.zip"
           Compress-Archive -Path dist\* -DestinationPath $archive -CompressionLevel Optimal
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path $archive -Leaf)" | Set-Content artifacts/SHA256SUMS -Encoding ascii
@@ -184,7 +193,7 @@ jobs:
       - name: Upload Windows bundle
         uses: actions/upload-artifact@v7
         with:
-          name: chronnote-ladybug-win32-x64-v0.18.1-p4-electron-${{ env.ELECTRON_VERSION }}
+          name: chronnote-ladybug-win32-x64-v0.18.1-p5-electron-${{ env.ELECTRON_VERSION }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 7

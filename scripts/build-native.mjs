@@ -17,7 +17,7 @@ const LADYBUG_TAG = `v${LADYBUG_VERSION}`
 const LADYBUG_COMMIT = '1354081eb5528b3ca12e38dd4402cdd47215e57a'
 const NODE_API_COMMIT = '1356ebbad75bf69c152dfe1188fad285b5f85b6e'
 const EXTENSIONS_COMMIT = '7d7f90fdbb562965407e7c29a8ae5312d09b5812'
-const PATCH_VERSION = 4
+const PATCH_VERSION = 5
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const workRoot = path.resolve(
@@ -205,6 +205,13 @@ function verifyConfiguredRuntime(buildRoot) {
   const expectedPath = `electron-${buildArch}/v${nodeRuntimeVersion}`
   if (!buildDefinition.includes(expectedPath)) {
     throw new Error(`CMake did not select the Electron import library: ${expectedPath}`)
+  }
+  const lowerCaseDefinition = buildDefinition.toLowerCase()
+  if (
+    !lowerCaseDefinition.includes('/delayload:node.exe') ||
+    !lowerCaseDefinition.includes('delayimp.lib')
+  ) {
+    throw new Error('CMake did not configure the Electron node.exe delay-load hook')
   }
 }
 

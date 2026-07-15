@@ -63,3 +63,17 @@ diff --git a/src/storage/wal/records/node_update_record_replay.cpp b/src/storage
 +    table.initUpdateState(&clientContext, *updateState);
      table.update(transaction::Transaction::Get(clientContext), *updateState);
  }
+diff --git a/tools/nodejs_api/CMakeLists.txt b/tools/nodejs_api/CMakeLists.txt
+--- a/tools/nodejs_api/CMakeLists.txt
++++ b/tools/nodejs_api/CMakeLists.txt
+@@ -171,6 +171,10 @@ add_library(lbugjs SHARED ${CPP_SOURCE_FILES})
+ if(CMAKE_JS_SRC)
+   target_sources(lbugjs PRIVATE "${CMAKE_JS_SRC}")
+ endif()
++if(MSVC AND CMAKE_JS_SRC)
++  target_link_options(lbugjs PRIVATE "/DELAYLOAD:node.exe")
++  target_link_libraries(lbugjs PRIVATE delayimp)
++endif()
+ set_target_properties(lbugjs PROPERTIES PREFIX "" SUFFIX ".node")
+ set_target_properties(lbugjs
+   PROPERTIES
