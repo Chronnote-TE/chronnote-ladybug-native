@@ -80,15 +80,35 @@ jobs:
         id: ladybug-cache
         uses: actions/cache/restore@v6
         with:
-          path: .cache/ladybug-work
-          key: ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .cache/ladybug-work
+            dist
+          key: ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-
-            ladybug-win32-x64-electron-41.0.2-v0.18.1-
-            ladybug-win32-x64-v0.18.1-
+            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}-
+
+      - name: Inspect cached release bundle
+        id: cached-bundle
+        run: |
+          $available = 'false'
+          if (Test-Path 'dist/manifest.json') {
+            try {
+              npm run verify
+              if ($LASTEXITCODE -eq 0) {
+                $available = 'true'
+              }
+            } catch {
+              Write-Warning "Cached release bundle is invalid: $_"
+            }
+            if ($available -ne 'true') {
+              Remove-Item dist -Recurse -Force
+            }
+          }
+          "available=$available" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Build LadybugDB with Jieba FTS
         id: native-build
+        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true' }}
         continue-on-error: true
         shell: cmd
         run: |
@@ -99,11 +119,13 @@ jobs:
         if: ${{ always() }}
         uses: actions/cache/save@v6
         with:
-          path: .cache/ladybug-work
+          path: |
+            .cache/ladybug-work
+            dist
           key: ${{ steps.ladybug-cache.outputs.cache-primary-key }}
 
       - name: Require successful native build
-        if: ${{ steps.native-build.outcome != 'success' }}
+        if: ${{ steps.cached-bundle.outputs.available != 'true' && steps.native-build.outcome != 'success' }}
         run: throw 'LadybugDB native build failed; the incremental build cache was preserved.'
 
       - name: Verify bundle metadata
