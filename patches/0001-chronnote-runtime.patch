@@ -18,6 +18,13 @@ diff --git a/extension/CMakeLists.txt b/extension/CMakeLists.txt
 diff --git a/extension/fts/src/function/create_fts_index.cpp b/extension/fts/src/function/create_fts_index.cpp
 --- a/extension/fts/src/function/create_fts_index.cpp
 +++ b/extension/fts/src/function/create_fts_index.cpp
+@@ -163,5 +163,5 @@ std::string createFTSIndexQuery(ClientContext& context, const TableFuncBindData&
+             FTSUtils::getTokenizeMacroName(tableID, indexName),
+             formatStrInCypher(ftsBindData->createFTSConfig.ignorePattern),
+             ftsBindData->createFTSConfig.tokenizerInfo.tokenizer,
+-            ftsBindData->createFTSConfig.tokenizerInfo.jiebaDictDir);
++            formatStrInCypher(ftsBindData->createFTSConfig.tokenizerInfo.jiebaDictDir));
+     }
 @@ -235,8 +235,12 @@ std::string createFTSIndexQuery(ClientContext& context, const TableFuncBindData&
      properties += "]";
      std::string params;

@@ -76,9 +76,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/ladybug-work
-          key: ladybug-win32-x64-v0.18.1-p3-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ladybug-win32-x64-v0.18.1-p4-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ladybug-win32-x64-v0.18.1-p3-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-
+            ladybug-win32-x64-v0.18.1-p4-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-
             ladybug-win32-x64-v0.18.1-
 
       - name: Build LadybugDB with Jieba FTS
@@ -121,7 +121,7 @@ jobs:
       - name: Create release bundle
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p3-electron-$env:ELECTRON_VERSION.zip"
+          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p4-electron-$env:ELECTRON_VERSION.zip"
           Compress-Archive -Path dist\* -DestinationPath $archive -CompressionLevel Optimal
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path $archive -Leaf)" | Set-Content artifacts/SHA256SUMS -Encoding ascii
@@ -129,7 +129,7 @@ jobs:
       - name: Upload Windows bundle
         uses: actions/upload-artifact@v7
         with:
-          name: chronnote-ladybug-win32-x64-v0.18.1-p3-electron-${{ env.ELECTRON_VERSION }}
+          name: chronnote-ladybug-win32-x64-v0.18.1-p4-electron-${{ env.ELECTRON_VERSION }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 7
