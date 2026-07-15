@@ -10,6 +10,8 @@ env:
   ELECTRON_VERSION: 41.0.2
   LADYBUG_TARGET_ARCH: x64
   LADYBUG_BUILD_JOBS: 4
+  LADYBUG_NODE_RUNTIME: electron
+  LADYBUG_NODE_RUNTIME_VERSION: 41.0.2
   LADYBUG_WORK_ROOT: ${{ github.workspace }}\.cache\ladybug-work
 
 jobs:
@@ -76,9 +78,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/ladybug-work
-          key: ladybug-win32-x64-v0.18.1-p4-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ladybug-win32-x64-v0.18.1-p4-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-
+            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-
+            ladybug-win32-x64-electron-41.0.2-v0.18.1-
             ladybug-win32-x64-v0.18.1-
 
       - name: Build LadybugDB with Jieba FTS

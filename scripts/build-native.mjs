@@ -28,6 +28,8 @@ const ladybugRoot = path.join(workRoot, 'ladybug')
 const extensionsRoot = path.join(workRoot, 'extensions')
 const nodeApiRoot = path.join(workRoot, 'node-api')
 const buildArch = process.env.LADYBUG_TARGET_ARCH ?? process.arch
+const nodeRuntime = process.env.LADYBUG_NODE_RUNTIME ?? 'node'
+const nodeRuntimeVersion = process.env.LADYBUG_NODE_RUNTIME_VERSION ?? process.versions.node
 const target = getTarget(process.platform, buildArch)
 
 mkdirSync(workRoot, { recursive: true })
@@ -123,12 +125,24 @@ function assembleSourceTree() {
   rmSync(nodeApiTarget, { recursive: true, force: true })
   cpSync(nodeApiRoot, nodeApiTarget, { preserveTimestamps: true, recursive: true })
   rmSync(path.join(nodeApiTarget, '.git'), { recursive: true, force: true })
+  configureNodeRuntime(nodeApiTarget)
 
   run(
     'git',
     ['apply', path.join(repositoryRoot, 'patches', '0001-chronnote-runtime.patch')],
     { cwd: ladybugRoot }
   )
+}
+
+function configureNodeRuntime(nodeApiTarget) {
+  const packagePath = path.join(nodeApiTarget, 'package.json')
+  const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'))
+  packageJson['cmake-js'] = {
+    arch: buildArch,
+    runtime: nodeRuntime,
+    runtimeVersion: nodeRuntimeVersion
+  }
+  writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
 }
 
 function installNodeApiDependencies() {
@@ -167,6 +181,7 @@ function configureAndBuild() {
   }
 
   run(process.env.CMAKE ?? 'cmake', cmakeArgs)
+  verifyConfiguredRuntime(buildRoot)
   run(process.env.CMAKE ?? 'cmake', [
     '--build',
     buildRoot,
@@ -175,6 +190,18 @@ function configureAndBuild() {
     '--parallel',
     process.env.LADYBUG_BUILD_JOBS ?? '2'
   ])
+}
+
+function verifyConfiguredRuntime(buildRoot) {
+  if (process.platform !== 'win32' || nodeRuntime !== 'electron') return
+  const buildDefinition = readFileSync(path.join(buildRoot, 'build.ninja'), 'utf8').replaceAll(
+    '\\',
+    '/'
+  )
+  const expectedPath = `electron-${buildArch}/v${nodeRuntimeVersion}`
+  if (!buildDefinition.includes(expectedPath)) {
+    throw new Error(`CMake did not select the Electron import library: ${expectedPath}`)
+  }
 }
 
 function appendCmakePath(args, name) {
@@ -218,6 +245,8 @@ function stageBundle() {
     nodeApiCommit: NODE_API_COMMIT,
     extensionsCommit: EXTENSIONS_COMMIT,
     patchVersion: PATCH_VERSION,
+    runtime: nodeRuntime,
+    runtimeVersion: nodeRuntimeVersion,
     target,
     artifact: describeFile(path.join(target, 'lbugjs.node')),
     dictionary: {
