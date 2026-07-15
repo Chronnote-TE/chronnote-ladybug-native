@@ -17,7 +17,8 @@ const LADYBUG_TAG = `v${LADYBUG_VERSION}`
 const LADYBUG_COMMIT = '1354081eb5528b3ca12e38dd4402cdd47215e57a'
 const NODE_API_COMMIT = '1356ebbad75bf69c152dfe1188fad285b5f85b6e'
 const EXTENSIONS_COMMIT = '7d7f90fdbb562965407e7c29a8ae5312d09b5812'
-const PATCH_VERSION = 6
+const PATCH_VERSION = 7
+const MSVC_RUNTIME_FILES = ['msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll']
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const workRoot = path.resolve(
@@ -177,7 +178,7 @@ function configureAndBuild() {
     '-DEXTENSION_STATIC_LINK_LIST=fts'
   ]
   if (process.platform === 'win32') {
-    cmakeArgs.push('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+    cmakeArgs.push('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL')
   }
   appendCmakePath(cmakeArgs, 'CMAKE_PREFIX_PATH')
   appendCmakePath(cmakeArgs, 'OPENSSL_ROOT_DIR')
@@ -235,6 +236,7 @@ function stageBundle() {
   mkdirSync(runtimeRoot, { recursive: true })
 
   cpSync(nativeFile, path.join(artifactRoot, 'lbugjs.node'))
+  const runtimeFiles = stageMsvcRuntime(artifactRoot, runtimeRoot)
   for (const fileName of [
     'connection.js',
     'database.js',
@@ -263,6 +265,7 @@ function stageBundle() {
     runtimeVersion: nodeRuntimeVersion,
     target,
     artifact: describeFile(path.join(target, 'lbugjs.node')),
+    ...(runtimeFiles ? { runtimeFiles } : {}),
     dictionary: {
       source: 'cppjieba',
       files: Object.fromEntries(
@@ -273,6 +276,26 @@ function stageBundle() {
     }
   }
   writeFileSync(path.join(outputRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+}
+
+function stageMsvcRuntime(artifactRoot, runtimeRoot) {
+  if (process.platform !== 'win32') return undefined
+
+  const sourceRoot = process.env.LADYBUG_MSVC_RUNTIME_DIR
+  if (!sourceRoot) {
+    throw new Error('LADYBUG_MSVC_RUNTIME_DIR is required for Windows builds')
+  }
+
+  for (const fileName of MSVC_RUNTIME_FILES) {
+    const sourceFile = path.join(sourceRoot, fileName)
+    if (!existsSync(sourceFile)) throw new Error(`MSVC runtime file is missing: ${sourceFile}`)
+    cpSync(sourceFile, path.join(artifactRoot, fileName))
+    cpSync(sourceFile, path.join(runtimeRoot, fileName))
+  }
+
+  return Object.fromEntries(
+    MSVC_RUNTIME_FILES.map((fileName) => [fileName, describeFile(path.join(target, fileName))])
+  )
 }
 
 function describeFile(relativePath) {

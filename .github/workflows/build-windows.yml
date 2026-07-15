@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: dist
-          key: ladybug-bundle-win32-x64-electron-41.0.2-v0.18.1-p6-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
+          key: ladybug-bundle-win32-x64-electron-41.0.2-v0.18.1-p7-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
 
       - name: Inspect verified release bundle
         id: cached-bundle
@@ -72,7 +72,31 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/ladybug-work
-          key: ladybug-cmake-win32-x64-electron-41.0.2-v0.18.1-p6-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
+          key: ladybug-cmake-win32-x64-electron-41.0.2-v0.18.1-p7-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
+          restore-keys: |
+            ladybug-cmake-win32-x64-electron-41.0.2-v0.18.1-p5-
+
+      - name: Locate MSVC runtime
+        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true' }}
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstallation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vsInstallation) {
+            throw 'Visual Studio C++ x64 toolchain is unavailable'
+          }
+          $runtimeDirectory = Get-ChildItem (Join-Path $vsInstallation 'VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT') -Directory |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (!$runtimeDirectory) {
+            throw 'The app-local Microsoft VC143 x64 runtime is unavailable'
+          }
+          foreach ($fileName in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
+            if (!(Test-Path (Join-Path $runtimeDirectory.FullName $fileName))) {
+              throw "MSVC runtime file is unavailable: $fileName"
+            }
+          }
+          "VS_INSTALLATION_PATH=$vsInstallation" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "LADYBUG_MSVC_RUNTIME_DIR=$($runtimeDirectory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Materialize cached native build
         id: cached-native
@@ -94,36 +118,29 @@ jobs:
         uses: actions/cache@v6
         with:
           path: |
-            C:\vcpkg\installed\x64-windows-static
-            C:\vcpkg\packages\openssl_x64-windows-static
-          key: ${{ runner.os }}-vcpkg-openssl-x64-windows-static-v1
+            C:\vcpkg\installed\x64-windows-static-md
+            C:\vcpkg\packages\openssl_x64-windows-static-md
+          key: ${{ runner.os }}-vcpkg-openssl-x64-windows-static-md-v1
 
       - name: Prepare native toolchain
         if: ${{ startsWith(github.ref, 'refs/tags/') || (steps.cached-bundle.outputs.available != 'true' && steps.cached-native.outputs.available != 'true') }}
         run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstallation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (!$vsInstallation) {
-            throw 'Visual Studio C++ x64 toolchain is unavailable'
-          }
-
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           if (!$vcpkgRoot) {
             $vcpkgRoot = 'C:\vcpkg'
           }
-          & (Join-Path $vcpkgRoot 'vcpkg.exe') install 'openssl:x64-windows-static'
+          & (Join-Path $vcpkgRoot 'vcpkg.exe') install 'openssl:x64-windows-static-md'
           if ($LASTEXITCODE -ne 0) {
             throw "vcpkg failed with exit code $LASTEXITCODE"
           }
 
-          $opensslRoot = Join-Path $vcpkgRoot 'installed\x64-windows-static'
+          $opensslRoot = Join-Path $vcpkgRoot 'installed\x64-windows-static-md'
           if (!(Test-Path (Join-Path $opensslRoot 'include\openssl\opensslv.h'))) {
             throw "OpenSSL headers are unavailable: $opensslRoot"
           }
 
           cmake --version
           ninja --version
-          "VS_INSTALLATION_PATH=$vsInstallation" | Out-File -FilePath $env:GITHUB_ENV -Append
           "CMAKE_PREFIX_PATH=$opensslRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           "OPENSSL_ROOT_DIR=$opensslRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
 
@@ -179,8 +196,18 @@ jobs:
           if ($dependencies -notmatch '(?is)delay load dependencies:.*node\.exe') {
             throw 'node.exe must be delay-loaded for Electron compatibility'
           }
-          if ($dependencies -match '(?i)(MSVCP|VCRUNTIME)[^\s]*\.dll') {
-            throw 'LadybugDB must statically link the Microsoft C/C++ runtime'
+          foreach ($fileName in @('MSVCP140.dll', 'VCRUNTIME140.dll', 'VCRUNTIME140_1.dll')) {
+            if ($dependencies -notmatch [regex]::Escape($fileName)) {
+              throw "LadybugDB does not import the expected app-local runtime: $fileName"
+            }
+            $runtimeFile = Join-Path 'dist\win32-x64' $fileName.ToLowerInvariant()
+            if (!(Test-Path $runtimeFile)) {
+              throw "App-local runtime file is missing: $runtimeFile"
+            }
+            $header = [IO.File]::ReadAllBytes((Resolve-Path $runtimeFile))
+            if ($header.Length -lt 2 -or $header[0] -ne 0x4d -or $header[1] -ne 0x5a) {
+              throw "App-local runtime file is not a Windows PE file: $runtimeFile"
+            }
           }
           & $dumpbin.FullName /IMPORTS dist\win32-x64\lbugjs.node |
             Select-String -Pattern 'electron|node\.exe|node\.dll|delayimp' -CaseSensitive:$false
@@ -188,7 +215,7 @@ jobs:
       - name: Create release bundle
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p6-electron-$env:ELECTRON_VERSION.zip"
+          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p7-electron-$env:ELECTRON_VERSION.zip"
           Compress-Archive -Path dist\* -DestinationPath $archive -CompressionLevel Optimal
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           $checksum = "$hash  $(Split-Path $archive -Leaf)`n"
@@ -201,7 +228,7 @@ jobs:
       - name: Upload Windows bundle
         uses: actions/upload-artifact@v7
         with:
-          name: chronnote-ladybug-win32-x64-v0.18.1-p6-electron-${{ env.ELECTRON_VERSION }}
+          name: chronnote-ladybug-win32-x64-v0.18.1-p7-electron-${{ env.ELECTRON_VERSION }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 7

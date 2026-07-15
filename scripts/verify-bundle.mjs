@@ -8,6 +8,7 @@ const outputRoot = path.resolve(process.env.LADYBUG_OUTPUT_ROOT ?? path.join(rep
 const manifest = JSON.parse(readFileSync(path.join(outputRoot, 'manifest.json'), 'utf8'))
 
 verifyFile(manifest.artifact, manifest.target.startsWith('win32-'))
+for (const file of Object.values(manifest.runtimeFiles ?? {})) verifyFile(file, true)
 for (const file of Object.values(manifest.dictionary.files)) verifyFile(file, false)
 
 process.stdout.write(
