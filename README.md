@@ -18,6 +18,9 @@ Pinned inputs:
 The uploaded bundle contains `lbugjs.node`, the cppjieba dictionaries, a manifest with SHA-256
 checksums, and the upstream JavaScript runtime needed by the smoke test.
 
+Manual workflow runs upload a short-lived Actions artifact. Pushing a version tag runs the same
+verified build and publishes the ZIP plus `SHA256SUMS` as an immutable GitHub Release.
+
 ## Local build
 
 Use a Visual Studio x64 developer shell with CMake, Ninja, Node.js 24, and a static OpenSSL 3
