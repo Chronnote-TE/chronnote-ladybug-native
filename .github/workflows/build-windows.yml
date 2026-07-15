@@ -159,20 +159,19 @@ jobs:
           path: .cache/ladybug-work
           key: ${{ steps.cmake-cache.outputs.cache-primary-key }}
 
-      - name: Smoke test in Node.js
-        run: npm run smoke:native
-
-      - name: Smoke test in Electron
+      - name: Inspect Windows native dependencies
         run: |
-          $electron = Join-Path $PWD 'node_modules\electron\dist\electron.exe'
-          if (!(Test-Path $electron)) {
-            throw "Electron executable is unavailable: $electron"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstallation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $dumpbin = Get-ChildItem (Join-Path $vsInstallation 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe') |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (!$dumpbin) {
+            throw 'dumpbin.exe is unavailable'
           }
-          $env:ELECTRON_RUN_AS_NODE = '1'
-          & $electron scripts/smoke-native.cjs electron-persistence
-          if ($LASTEXITCODE -ne 0) {
-            throw "Electron smoke test failed with exit code $LASTEXITCODE"
-          }
+          & $dumpbin.FullName /DEPENDENTS dist\win32-x64\lbugjs.node
+          & $dumpbin.FullName /IMPORTS dist\win32-x64\lbugjs.node |
+            Select-String -Pattern 'electron|node\.exe|node\.dll|delayimp' -CaseSensitive:$false
 
       - name: Create release bundle
         run: |
@@ -189,6 +188,21 @@ jobs:
           path: artifacts/
           if-no-files-found: error
           retention-days: 7
+
+      - name: Smoke test in Node.js
+        run: npm run smoke:native
+
+      - name: Smoke test in Electron
+        run: |
+          $electron = Join-Path $PWD 'node_modules\electron\dist\electron.exe'
+          if (!(Test-Path $electron)) {
+            throw "Electron executable is unavailable: $electron"
+          }
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          & $electron scripts/smoke-native.cjs electron-persistence
+          if ($LASTEXITCODE -ne 0) {
+            throw "Electron smoke test failed with exit code $LASTEXITCODE"
+          }
 
       - name: Publish tagged release
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
