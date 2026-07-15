@@ -106,16 +106,22 @@ function assembleSourceTree() {
   const extensionTarget = path.join(ladybugRoot, 'extension')
   rmSync(extensionTarget, { recursive: true, force: true })
   mkdirSync(extensionTarget, { recursive: true })
-  cpSync(path.join(extensionsRoot, 'CMakeLists.txt'), path.join(extensionTarget, 'CMakeLists.txt'))
+  cpSync(path.join(extensionsRoot, 'CMakeLists.txt'), path.join(extensionTarget, 'CMakeLists.txt'), {
+    preserveTimestamps: true
+  })
   cpSync(
     path.join(extensionsRoot, 'extension_config.cmake'),
-    path.join(extensionTarget, 'extension_config.cmake')
+    path.join(extensionTarget, 'extension_config.cmake'),
+    { preserveTimestamps: true }
   )
-  cpSync(path.join(extensionsRoot, 'fts'), path.join(extensionTarget, 'fts'), { recursive: true })
+  cpSync(path.join(extensionsRoot, 'fts'), path.join(extensionTarget, 'fts'), {
+    preserveTimestamps: true,
+    recursive: true
+  })
 
   const nodeApiTarget = path.join(ladybugRoot, 'tools', 'nodejs_api')
   rmSync(nodeApiTarget, { recursive: true, force: true })
-  cpSync(nodeApiRoot, nodeApiTarget, { recursive: true })
+  cpSync(nodeApiRoot, nodeApiTarget, { preserveTimestamps: true, recursive: true })
   rmSync(path.join(nodeApiTarget, '.git'), { recursive: true, force: true })
 
   run(
