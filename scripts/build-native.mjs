@@ -33,13 +33,17 @@ const nodeRuntimeVersion = process.env.LADYBUG_NODE_RUNTIME_VERSION ?? process.v
 const target = getTarget(process.platform, buildArch)
 
 mkdirSync(workRoot, { recursive: true })
-prepareLadybug()
-prepareExtensions()
-prepareNodeApi()
-assembleSourceTree()
-installNodeApiDependencies()
-configureAndBuild()
-stageBundle()
+if (process.argv.includes('--stage-existing')) {
+  stageBundle()
+} else {
+  prepareLadybug()
+  prepareExtensions()
+  prepareNodeApi()
+  assembleSourceTree()
+  installNodeApiDependencies()
+  configureAndBuild()
+  stageBundle()
+}
 
 process.stdout.write(`[ladybug-native] built ${target} in ${outputRoot}\n`)
 

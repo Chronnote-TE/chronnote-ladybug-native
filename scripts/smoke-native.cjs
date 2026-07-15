@@ -16,10 +16,37 @@ const dictionaryPath = path.resolve(
 const phase = process.argv[2]
 const databasePath = process.argv[3]
 
-if (phase) {
+if (phase === 'electron-persistence') {
+  runElectronPersistenceSmoke()
+} else if (phase) {
   runWorker(phase, databasePath)
 } else {
   runOrchestrator()
+}
+
+function runElectronPersistenceSmoke() {
+  const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'chronnote-ladybug-electron-smoke-'))
+  const targetDatabase = path.join(temporaryRoot, 'graph')
+  const { Connection, Database } = require(runtimeRoot)
+  try {
+    withConnection(Database, Connection, targetDatabase, seed)
+    withConnection(Database, Connection, targetDatabase, verifyFirstRecovery)
+    withConnection(Database, Connection, targetDatabase, verifyFinalRecovery)
+    process.stdout.write('[ladybug-native] Electron Jieba FTS persistence smoke test passed\n')
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true })
+  }
+}
+
+function withConnection(Database, Connection, targetDatabase, operation) {
+  const database = new Database(targetDatabase)
+  const connection = new Connection(database)
+  try {
+    operation(connection)
+  } finally {
+    connection.closeSync()
+    database.closeSync()
+  }
 }
 
 function runOrchestrator() {

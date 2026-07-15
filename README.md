@@ -6,7 +6,8 @@ recipes, patches, and smoke tests for public upstream projects.
 ## Windows x64
 
 The `Build Windows x64` workflow builds a statically linked LadybugDB Node-API module with the
-FTS extension and cppjieba tokenizer, then verifies it in both Node.js and Electron.
+FTS extension and cppjieba tokenizer. Node.js runs a three-process WAL crash recovery test;
+Electron loads the same module and verifies Jieba FTS mutations across clean database reopens.
 
 Pinned inputs:
 

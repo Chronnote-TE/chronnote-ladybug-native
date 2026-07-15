@@ -40,7 +40,43 @@ jobs:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
         run: npm ci
 
+      - name: Restore incremental CMake build
+        id: ladybug-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            .cache/ladybug-work
+            dist
+          key: ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}
+          restore-keys: |
+            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}-
+            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-d7382c333df035b137b14c9bd0f6b309a820ba1448710b801fea7982b673f685-
+
+      - name: Inspect cached release bundle
+        id: cached-bundle
+        run: |
+          $available = 'false'
+          $cachedNative = '.cache/ladybug-work/ladybug/tools/nodejs_api/build/lbugjs.node'
+          if (!(Test-Path 'dist/manifest.json') -and (Test-Path $cachedNative)) {
+            node scripts/build-native.mjs --stage-existing
+          }
+          if (Test-Path 'dist/manifest.json') {
+            try {
+              npm run verify
+              if ($LASTEXITCODE -eq 0) {
+                $available = 'true'
+              }
+            } catch {
+              Write-Warning "Cached release bundle is invalid: $_"
+            }
+            if ($available -ne 'true') {
+              Remove-Item dist -Recurse -Force
+            }
+          }
+          "available=$available" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Restore OpenSSL cache
+        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true' }}
         uses: actions/cache@v6
         with:
           path: |
@@ -49,6 +85,7 @@ jobs:
           key: ${{ runner.os }}-vcpkg-openssl-x64-windows-static-md-v1
 
       - name: Prepare native toolchain
+        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true' }}
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsInstallation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -76,36 +113,6 @@ jobs:
           "CMAKE_PREFIX_PATH=$opensslRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           "OPENSSL_ROOT_DIR=$opensslRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Restore incremental CMake build
-        id: ladybug-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            .cache/ladybug-work
-            dist
-          key: ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            ladybug-win32-x64-electron-41.0.2-v0.18.1-p4-${{ hashFiles('package.json', 'package-lock.json', 'scripts/build-native.mjs', 'patches/*.patch') }}-
-
-      - name: Inspect cached release bundle
-        id: cached-bundle
-        run: |
-          $available = 'false'
-          if (Test-Path 'dist/manifest.json') {
-            try {
-              npm run verify
-              if ($LASTEXITCODE -eq 0) {
-                $available = 'true'
-              }
-            } catch {
-              Write-Warning "Cached release bundle is invalid: $_"
-            }
-            if ($available -ne 'true') {
-              Remove-Item dist -Recurse -Force
-            }
-          }
-          "available=$available" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
       - name: Build LadybugDB with Jieba FTS
         id: native-build
         if: ${{ startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true' }}
@@ -115,21 +122,21 @@ jobs:
           call "%VS_INSTALLATION_PATH%\VC\Auxiliary\Build\vcvars64.bat"
           npm run build:native
 
-      - name: Save incremental CMake build
-        if: ${{ always() }}
+      - name: Require successful native build
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || steps.cached-bundle.outputs.available != 'true') && steps.native-build.outcome != 'success' }}
+        run: throw 'LadybugDB native build failed; the incremental build cache was preserved.'
+
+      - name: Verify bundle metadata
+        run: npm run verify
+
+      - name: Save verified native build
+        if: ${{ steps.ladybug-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: |
             .cache/ladybug-work
             dist
           key: ${{ steps.ladybug-cache.outputs.cache-primary-key }}
-
-      - name: Require successful native build
-        if: ${{ steps.cached-bundle.outputs.available != 'true' && steps.native-build.outcome != 'success' }}
-        run: throw 'LadybugDB native build failed; the incremental build cache was preserved.'
-
-      - name: Verify bundle metadata
-        run: npm run verify
 
       - name: Smoke test in Node.js
         run: npm run smoke:native
@@ -141,7 +148,7 @@ jobs:
             throw "Electron executable is unavailable: $electron"
           }
           $env:ELECTRON_RUN_AS_NODE = '1'
-          & $electron scripts/smoke-native.cjs
+          & $electron scripts/smoke-native.cjs electron-persistence
           if ($LASTEXITCODE -ne 0) {
             throw "Electron smoke test failed with exit code $LASTEXITCODE"
           }
@@ -171,4 +178,4 @@ jobs:
             --repo $env:GITHUB_REPOSITORY `
             --verify-tag `
             --title "Chronnote LadybugDB $env:GITHUB_REF_NAME" `
-            --notes "Reproducible Windows x64 LadybugDB runtime for Electron $env:ELECTRON_VERSION. The release was verified with Jieba FTS and three-process WAL crash recovery smoke tests in Node.js and Electron."
+            --notes "Reproducible Windows x64 LadybugDB runtime for Electron $env:ELECTRON_VERSION. The release was verified with three-process WAL crash recovery in Node.js and Jieba FTS persistence in Electron."
