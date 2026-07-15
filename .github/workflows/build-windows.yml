@@ -1,0 +1,135 @@
+name: Build Windows x64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_VERSION: 41.0.2
+  LADYBUG_TARGET_ARCH: x64
+  LADYBUG_BUILD_JOBS: 4
+  LADYBUG_WORK_ROOT: ${{ github.workspace }}\.cache\ladybug-work
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out build repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+        run: npm ci
+
+      - name: Restore OpenSSL cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            C:\vcpkg\installed\x64-windows-static-md
+            C:\vcpkg\packages\openssl_x64-windows-static-md
+          key: ${{ runner.os }}-vcpkg-openssl-x64-windows-static-md-v1
+
+      - name: Prepare native toolchain
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstallation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vsInstallation) {
+            throw 'Visual Studio C++ x64 toolchain is unavailable'
+          }
+
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if (!$vcpkgRoot) {
+            $vcpkgRoot = 'C:\vcpkg'
+          }
+          & (Join-Path $vcpkgRoot 'vcpkg.exe') install 'openssl:x64-windows-static-md'
+          if ($LASTEXITCODE -ne 0) {
+            throw "vcpkg failed with exit code $LASTEXITCODE"
+          }
+
+          $opensslRoot = Join-Path $vcpkgRoot 'installed\x64-windows-static-md'
+          if (!(Test-Path (Join-Path $opensslRoot 'include\openssl\opensslv.h'))) {
+            throw "OpenSSL headers are unavailable: $opensslRoot"
+          }
+
+          cmake --version
+          ninja --version
+          "VS_INSTALLATION_PATH=$vsInstallation" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CMAKE_PREFIX_PATH=$opensslRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OPENSSL_ROOT_DIR=$opensslRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore incremental CMake build
+        id: ladybug-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/ladybug-work
+          key: ladybug-win32-x64-v0.18.1-p3-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ladybug-win32-x64-v0.18.1-p3-${{ hashFiles('scripts/build-native.mjs', 'patches/*.patch') }}-
+            ladybug-win32-x64-v0.18.1-
+
+      - name: Build LadybugDB with Jieba FTS
+        id: native-build
+        continue-on-error: true
+        shell: cmd
+        run: |
+          call "%VS_INSTALLATION_PATH%\VC\Auxiliary\Build\vcvars64.bat"
+          npm run build:native
+
+      - name: Save incremental CMake build
+        if: ${{ always() }}
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/ladybug-work
+          key: ${{ steps.ladybug-cache.outputs.cache-primary-key }}
+
+      - name: Require successful native build
+        if: ${{ steps.native-build.outcome != 'success' }}
+        run: throw 'LadybugDB native build failed; the incremental build cache was preserved.'
+
+      - name: Verify bundle metadata
+        run: npm run verify
+
+      - name: Smoke test in Node.js
+        run: npm run smoke:native
+
+      - name: Smoke test in Electron
+        run: |
+          $electron = Join-Path $PWD 'node_modules\electron\dist\electron.exe'
+          if (!(Test-Path $electron)) {
+            throw "Electron executable is unavailable: $electron"
+          }
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          & $electron scripts/smoke-native.cjs
+          if ($LASTEXITCODE -ne 0) {
+            throw "Electron smoke test failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Create release bundle
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $archive = "artifacts/chronnote-ladybug-win32-x64-v0.18.1-p3-electron-$env:ELECTRON_VERSION.zip"
+          Compress-Archive -Path dist\* -DestinationPath $archive -CompressionLevel Optimal
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $archive -Leaf)" | Set-Content artifacts/SHA256SUMS -Encoding ascii
+
+      - name: Upload Windows bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: chronnote-ladybug-win32-x64-v0.18.1-p3-electron-${{ env.ELECTRON_VERSION }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7

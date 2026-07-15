@@ -1,0 +1,16 @@
+{
+  "name": "chronnote-ladybug-native",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reproducible LadybugDB native builds for Chronnote",
+  "license": "MIT",
+  "scripts": {
+    "build:native": "node scripts/build-native.mjs",
+    "smoke:native": "node scripts/smoke-native.cjs",
+    "verify": "node scripts/verify-bundle.mjs"
+  },
+  "devDependencies": {
+    "electron": "41.0.2"
+  }
+}
+
