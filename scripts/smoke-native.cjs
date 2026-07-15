@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict')
 const { spawnSync } = require('node:child_process')
-const { mkdtempSync, rmSync, statSync } = require('node:fs')
+const { mkdtempSync, rmSync, statSync, writeSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
 
@@ -95,7 +95,8 @@ function runWorker(nextPhase, targetDatabase) {
 
   if (nextPhase !== 'recover-final') {
     const marker = `__LADYBUG_CRASH_READY__:${nextPhase}\n`
-    process.stdout.write(marker, () => process.kill(process.pid, 'SIGKILL'))
+    writeSync(1, marker)
+    process.kill(process.pid, 'SIGKILL')
   }
 }
 
